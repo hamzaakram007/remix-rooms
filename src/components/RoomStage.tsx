@@ -6,6 +6,7 @@ type Props = {
   room: Pick<Room, 'wallColor' | 'floorColor' | 'accentColor' | 'props' | 'ribbon'>
   selectedId?: string | null
   onSelect?: (id: string) => void
+  onPropPointerDown?: (id: string, e: React.PointerEvent) => void
   interactive?: boolean
   compact?: boolean
   className?: string
@@ -15,6 +16,7 @@ export function RoomStage({
   room,
   selectedId,
   onSelect,
+  onPropPointerDown,
   interactive = false,
   compact = false,
   className = '',
@@ -48,6 +50,7 @@ export function RoomStage({
           selected={selectedId === prop.id}
           interactive={interactive}
           onSelect={onSelect}
+          onPropPointerDown={onPropPointerDown}
         />
       ))}
     </div>
@@ -63,20 +66,25 @@ function PropNode({
   selected,
   interactive,
   onSelect,
+  onPropPointerDown,
 }: {
   prop: RoomProp
   selected: boolean
   interactive: boolean
   onSelect?: (id: string) => void
+  onPropPointerDown?: (id: string, e: React.PointerEvent) => void
 }) {
   return (
     <motion.button
       type="button"
       className={`room-prop ${selected ? 'is-selected' : ''} ${interactive ? 'is-interactive' : ''}`}
-      style={{ left: `${prop.x}%`, top: `${prop.y}%` }}
+      style={{ left: `${prop.x}%`, top: `${prop.y}%`, touchAction: interactive ? 'none' : undefined }}
       onClick={(e) => {
         e.stopPropagation()
         if (interactive) onSelect?.(prop.id)
+      }}
+      onPointerDown={(e) => {
+        if (interactive) onPropPointerDown?.(prop.id, e)
       }}
       disabled={!interactive}
       whileTap={interactive ? { scale: 0.95 } : undefined}

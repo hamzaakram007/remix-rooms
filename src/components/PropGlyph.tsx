@@ -132,6 +132,43 @@ function render(kind: PropKind, c: string) {
           <circle cx="36" cy="42" r="6" fill="#ff7a1a" />
         </>
       )
+    case 'cushion':
+      return (
+        <>
+          <ellipse cx="36" cy="40" rx="24" ry="16" fill={c} />
+          <ellipse cx="36" cy="36" rx="16" ry="10" fill="#fff" opacity={0.22} />
+          <path d="M20 40 Q36 48 52 40" stroke="#000" strokeOpacity={0.12} fill="none" strokeWidth="3" />
+        </>
+      )
+    case 'star':
+      return (
+        <>
+          <polygon
+            points="36,8 42,26 62,26 46,38 52,56 36,45 20,56 26,38 10,26 30,26"
+            fill={c}
+          />
+          <circle cx="36" cy="32" r="5" fill="#fff" opacity={0.35} />
+        </>
+      )
+    case 'mirror':
+      return (
+        <>
+          <ellipse cx="36" cy="36" rx="18" ry="26" fill="#2a1a10" />
+          <ellipse cx="36" cy="36" rx="14" ry="22" fill={c} opacity={0.85} />
+          <ellipse cx="30" cy="28" rx="5" ry="8" fill="#fff" opacity={0.35} />
+        </>
+      )
+    case 'toy':
+      return (
+        <>
+          <circle cx="36" cy="34" r="16" fill={c} />
+          <circle cx="30" cy="30" r="3" fill="#0b2438" />
+          <circle cx="42" cy="30" r="3" fill="#0b2438" />
+          <path d="M28 40 Q36 46 44 40" stroke="#0b2438" strokeWidth="2.5" fill="none" />
+          <circle cx="18" cy="22" r="6" fill={c} opacity={0.9} />
+          <circle cx="54" cy="22" r="6" fill={c} opacity={0.9} />
+        </>
+      )
   }
 }
 
@@ -148,4 +185,8 @@ export const PROP_LABELS: Record<PropKind, string> = {
   shelf: 'Shelf',
   beanbag: 'Beanbag',
   poster: 'Poster',
+  cushion: 'Cushion',
+  star: 'Star',
+  mirror: 'Mirror',
+  toy: 'Toy',
 }

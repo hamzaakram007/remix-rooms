@@ -19,4 +19,16 @@ export const CHALLENGES: Challenge[] = [
     prompt: 'Bright walls, bright desk, big creative vibes.',
     ribbon: 'Sunshine Ribbon',
   },
+  {
+    id: 'wildest-fort',
+    title: 'Wildest Fort',
+    prompt: 'Piles of cushions, stars, and zero blank corners.',
+    ribbon: 'Fort Ribbon',
+  },
+  {
+    id: 'neon-arcade',
+    title: 'Neon Arcade Vibes',
+    prompt: 'Posters, toys, and a glow that says high score.',
+    ribbon: 'Neon Ribbon',
+  },
 ]

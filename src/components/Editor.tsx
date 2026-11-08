@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Challenge, PropKind, Room } from '../data/types'
 import {
   FLOOR_SWATCHES,
   STAMPABLE,
   WALL_SWATCHES,
+  cloneProp,
   nextColor,
+  snapshotRoom,
   stampProp,
 } from '../lib/rooms'
 import { RoomStage } from './RoomStage'
@@ -19,23 +21,74 @@ type Props = {
   onChange: (room: Room) => void
   onShare: () => void
   onLineage: () => void
+  onDuplicate: () => void
   onBack: () => void
 }
 
-export function Editor({ room, challenges, onChange, onShare, onLineage, onBack }: Props) {
+const HISTORY_LIMIT = 40
+
+export function Editor({
+  room,
+  challenges,
+  onChange,
+  onShare,
+  onLineage,
+  onDuplicate,
+  onBack,
+}: Props) {
   const [tool, setTool] = useState<Tool>('select')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [stampKind, setStampKind] = useState<PropKind>('plant')
+  const [past, setPast] = useState<Room[]>([])
+  const [future, setFuture] = useState<Room[]>([])
+  const dragRef = useRef<{ id: string; moved: boolean } | null>(null)
+  const roomRef = useRef(room)
+  roomRef.current = room
+
   const selected = useMemo(
     () => room.props.find((p) => p.id === selectedId) ?? null,
     [room.props, selectedId],
   )
 
-  function updateProp(id: string, patch: Partial<Room['props'][number]>) {
-    onChange({
+  useEffect(() => {
+    setPast([])
+    setFuture([])
+    setSelectedId(null)
+  }, [room.id])
+
+  function commit(next: Room) {
+    setPast((p) => [...p.slice(-(HISTORY_LIMIT - 1)), snapshotRoom(roomRef.current)])
+    setFuture([])
+    onChange(next)
+  }
+
+  function undo() {
+    setPast((p) => {
+      if (!p.length) return p
+      const prev = p[p.length - 1]!
+      setFuture((f) => [snapshotRoom(roomRef.current), ...f].slice(0, HISTORY_LIMIT))
+      onChange(prev)
+      return p.slice(0, -1)
+    })
+  }
+
+  function redo() {
+    setFuture((f) => {
+      if (!f.length) return f
+      const next = f[0]!
+      setPast((p) => [...p, snapshotRoom(roomRef.current)].slice(-HISTORY_LIMIT))
+      onChange(next)
+      return f.slice(1)
+    })
+  }
+
+  function updateProp(id: string, patch: Partial<Room['props'][number]>, record = true) {
+    const next = {
       ...room,
       props: room.props.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    })
+    }
+    if (record) commit(next)
+    else onChange(next)
   }
 
   function handleSelect(id: string) {
@@ -46,13 +99,17 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
     } else if (tool === 'stretch') {
       const prop = room.props.find((p) => p.id === id)
       if (prop) {
-        const next = prop.scale >= 1.35 ? 0.75 : +(prop.scale + 0.15).toFixed(2)
+        const next = prop.scale >= 1.4 ? 0.7 : +(prop.scale + 0.12).toFixed(2)
         updateProp(id, { scale: next })
       }
     }
   }
 
   function handleStageClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (dragRef.current?.moved) {
+      dragRef.current = null
+      return
+    }
     if (tool !== 'stamp') {
       setSelectedId(null)
       return
@@ -61,8 +118,46 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top) / rect.height) * 100
     const prop = stampProp(stampKind, clamp(x, 8, 92), clamp(y, 18, 88))
-    onChange({ ...room, props: [...room.props, prop] })
+    commit({ ...room, props: [...room.props, prop] })
     setSelectedId(prop.id)
+  }
+
+  function handlePropPointerDown(id: string, e: React.PointerEvent) {
+    if (tool !== 'select') return
+    e.stopPropagation()
+    setSelectedId(id)
+    const stage = (e.currentTarget as HTMLElement).closest('.editor__stage-wrap')
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    dragRef.current = { id, moved: false }
+    const start = snapshotRoom(room)
+
+    const onMove = (ev: PointerEvent) => {
+      if (!dragRef.current || dragRef.current.id !== id) return
+      dragRef.current.moved = true
+      const x = clamp(((ev.clientX - rect.left) / rect.width) * 100, 6, 94)
+      const y = clamp(((ev.clientY - rect.top) / rect.height) * 100, 12, 90)
+      onChange({
+        ...roomRef.current,
+        props: roomRef.current.props.map((p) => (p.id === id ? { ...p, x, y } : p)),
+      })
+    }
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      if (dragRef.current?.moved) {
+        setPast((p) => [...p.slice(-(HISTORY_LIMIT - 1)), start])
+        setFuture([])
+      }
+      // keep dragRef briefly so click handler can see moved flag
+      window.setTimeout(() => {
+        dragRef.current = null
+      }, 0)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
   }
 
   function nudge(dx: number, dy: number) {
@@ -75,14 +170,25 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
 
   function removeSelected() {
     if (!selected) return
-    onChange({ ...room, props: room.props.filter((p) => p.id !== selected.id) })
+    commit({ ...room, props: room.props.filter((p) => p.id !== selected.id) })
     setSelectedId(null)
+  }
+
+  function duplicateSelected() {
+    if (!selected) return
+    const copy = cloneProp(selected)
+    commit({ ...room, props: [...room.props, copy] })
+    setSelectedId(copy.id)
   }
 
   function applyChallenge(id: string) {
     const c = challenges.find((ch) => ch.id === id)
     if (!c) return
-    onChange({ ...room, challengeId: c.id, ribbon: c.ribbon })
+    if (room.challengeId === c.id) {
+      commit({ ...room, challengeId: undefined, ribbon: undefined })
+      return
+    }
+    commit({ ...room, challengeId: c.id, ribbon: c.ribbon })
   }
 
   return (
@@ -95,28 +201,59 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
           className="name-input"
           value={room.name}
           aria-label="Room name"
-          onChange={(e) => onChange({ ...room, name: e.target.value })}
+          onChange={(e) => commit({ ...room, name: e.target.value })}
         />
         <div className="editor__actions">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={undo}
+            disabled={!past.length}
+            title="Undo"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={redo}
+            disabled={!future.length}
+            title="Redo"
+          >
+            Redo
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onDuplicate}>
+            Duplicate
+          </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onLineage}>
             Lineage
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={onShare}>
-            Share with family
+            Share invite
           </button>
         </div>
       </header>
+
+      {(room.parentName || room.lineage.length > 1) && (
+        <p className="editor__lineage-chip">
+          Remix of <strong>{room.parentName ?? room.lineage[room.lineage.length - 1]}</strong>
+          {room.parentAuthor ? ` by ${room.parentAuthor}` : ''}
+          <span aria-hidden> · </span>
+          {room.lineage.length} step{room.lineage.length === 1 ? '' : 's'} deep
+        </p>
+      )}
 
       <div className="editor__stage-wrap" onClick={handleStageClick}>
         <RoomStage
           room={room}
           selectedId={selectedId}
           onSelect={handleSelect}
+          onPropPointerDown={handlePropPointerDown}
           interactive
         />
       </div>
 
-      <div className="tool-dock">
+      <div className="tool-dock" role="toolbar" aria-label="Room tools">
         {(
           [
             ['select', 'Move'],
@@ -148,7 +285,11 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
         >
           {tool === 'select' && (
             <div className="tool-panel__row">
-              <p>{selected ? `Selected: ${PROP_LABELS[selected.kind]}` : 'Tap a prop, then nudge it.'}</p>
+              <p>
+                {selected
+                  ? `Selected: ${PROP_LABELS[selected.kind]} — drag or nudge`
+                  : 'Tap a prop, then drag or nudge it.'}
+              </p>
               <div className="nudge">
                 <button type="button" onClick={() => nudge(0, -4)} disabled={!selected}>
                   ↑
@@ -161,6 +302,9 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
                 </button>
                 <button type="button" onClick={() => nudge(0, 4)} disabled={!selected}>
                   ↓
+                </button>
+                <button type="button" onClick={duplicateSelected} disabled={!selected}>
+                  Dup prop
                 </button>
                 <button type="button" className="danger" onClick={removeSelected} disabled={!selected}>
                   Remove
@@ -207,7 +351,7 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
                       className={`swatch ${room.wallColor === c ? 'is-on' : ''}`}
                       style={{ background: c }}
                       aria-label={`Wall ${c}`}
-                      onClick={() => onChange({ ...room, wallColor: c })}
+                      onClick={() => commit({ ...room, wallColor: c })}
                     />
                   ))}
                 </div>
@@ -222,7 +366,7 @@ export function Editor({ room, challenges, onChange, onShare, onLineage, onBack 
                       className={`swatch ${room.floorColor === c ? 'is-on' : ''}`}
                       style={{ background: c }}
                       aria-label={`Floor ${c}`}
-                      onClick={() => onChange({ ...room, floorColor: c })}
+                      onClick={() => commit({ ...room, floorColor: c })}
                     />
                   ))}
                 </div>

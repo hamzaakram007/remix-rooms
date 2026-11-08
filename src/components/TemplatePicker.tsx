@@ -17,7 +17,7 @@ export function TemplatePicker({ onPick, onBack }: Props) {
         </button>
         <div>
           <h2>Pick a starting room</h2>
-          <p>No blank canvas — remix from a vibe you like.</p>
+          <p>{TEMPLATES.length} templates — no blank canvas. Remix from a vibe you like.</p>
         </div>
       </header>
 
@@ -30,10 +30,10 @@ export function TemplatePicker({ onPick, onBack }: Props) {
               type="button"
               className="template-card"
               onClick={() => onPick(t.id)}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              whileHover={{ y: -4 }}
+              transition={{ delay: i * 0.04, type: 'spring', stiffness: 300, damping: 22 }}
+              whileHover={{ y: -5 }}
               whileTap={{ scale: 0.98 }}
             >
               <RoomStage room={preview} compact />
