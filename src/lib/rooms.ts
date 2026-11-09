@@ -134,8 +134,8 @@ export function cloneProp(prop: RoomProp): RoomProp {
   }
 }
 
-const STORAGE_KEY = 'remix-rooms:v2'
-const LEGACY_KEY = 'remix-rooms:v1'
+const STORAGE_KEY = 'remix-rooms:v3'
+const LEGACY_KEYS = ['remix-rooms:v2', 'remix-rooms:v1']
 
 export function persistRooms(rooms: Room[]) {
   try {
@@ -147,12 +147,31 @@ export function persistRooms(rooms: Room[]) {
 
 export function loadRooms(): Room[] | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
+    let raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      for (const key of LEGACY_KEYS) {
+        raw = localStorage.getItem(key)
+        if (raw) break
+      }
+    }
     if (!raw) return null
     return JSON.parse(raw) as Room[]
   } catch {
     return null
   }
+}
+
+/** Merge cloud + local rooms by id, preferring newer createdAt / shared cloud copies. */
+export function mergeRoomLists(local: Room[], remote: Room[]): Room[] {
+  const map = new Map<string, Room>()
+  for (const room of local) map.set(room.id, room)
+  for (const room of remote) {
+    const prev = map.get(room.id)
+    if (!prev || (room.createdAt ?? 0) >= (prev.createdAt ?? 0)) {
+      map.set(room.id, room)
+    }
+  }
+  return [...map.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 }
 
 export function snapshotRoom(room: Room): Room {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CHALLENGES } from './data/challenges'
 import { buildSampleGallery } from './data/gallery'
@@ -10,17 +10,31 @@ import { Home } from './components/Home'
 import { InviteAccept } from './components/InviteAccept'
 import { JoinCode } from './components/JoinCode'
 import { Lineage } from './components/Lineage'
+import { PlayerSync } from './components/PlayerSync'
 import { ShareSheet } from './components/ShareSheet'
 import { TemplatePicker } from './components/TemplatePicker'
-import { clearInviteHash, parseInviteFromLocation } from './lib/share'
+import { fetchCloudStatus, fetchPlayerRooms, savePlayerRooms, type CloudStatus } from './lib/api'
+import {
+  loadDisplayName,
+  loadPlayerCode,
+  saveDisplayName,
+  savePlayerCode,
+} from './lib/player'
+import {
+  clearInviteHash,
+  parseInviteFromLocation,
+  resolveInvite,
+} from './lib/share'
 import {
   duplicateRoom,
   loadRooms,
+  mergeRoomLists,
   persistRooms,
   remixOf,
   roomFromTemplate,
   templateById,
 } from './lib/rooms'
+import { weeklyChallenge } from './lib/weekly'
 
 export default function App() {
   const [rooms, setRooms] = useState<Room[]>(() => {
@@ -31,27 +45,93 @@ export default function App() {
   const [view, setView] = useState<View>({ name: 'home' })
   const [toast, setToast] = useState<string | null>(null)
   const [pendingInvite, setPendingInvite] = useState<Room | null>(null)
+  const [playerCode, setPlayerCode] = useState(() => loadPlayerCode())
+  const [displayName, setDisplayName] = useState(() => loadDisplayName())
+  const [showSync, setShowSync] = useState(false)
+  const [cloud, setCloud] = useState<CloudStatus>({
+    ok: false,
+    backend: 'offline',
+    durable: false,
+  })
+  const [hydrated, setHydrated] = useState(false)
+  const saveTimer = useRef<number | null>(null)
+  const weekly = useMemo(() => weeklyChallenge(), [])
 
   useEffect(() => {
     persistRooms(rooms)
   }, [rooms])
 
+  // Cloud status + owned-room pull
   useEffect(() => {
-    const incoming = parseInviteFromLocation()
-    if (incoming) {
-      setPendingInvite(incoming)
+    let cancelled = false
+    ;(async () => {
+      const status = await fetchCloudStatus()
+      if (cancelled) return
+      setCloud(status)
+
+      const remote = await fetchPlayerRooms(playerCode)
+      if (cancelled) return
+      if (remote && remote.rooms.length) {
+        setRooms((local) => {
+          const merged = mergeRoomLists(local, remote.rooms)
+          return merged
+        })
+        if (remote.displayName) {
+          setDisplayName(remote.displayName)
+          saveDisplayName(remote.displayName)
+        }
+        setToast('Restored rooms from your friend code')
+      }
+      setHydrated(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [playerCode])
+
+  // Debounced cloud save of owned + circle rooms for this player code
+  useEffect(() => {
+    if (!hydrated) return
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      const ownedAndCircle = rooms.filter(
+        (r) => r.authorKind === 'you' || r.inviteImported || r.shared,
+      )
+      void savePlayerRooms(playerCode, ownedAndCircle, displayName).then((result) => {
+        if (result.ok && result.durable) {
+          setCloud((c) => ({ ...c, ok: true, backend: 'vercel-kv', durable: true }))
+        } else if (result.ok) {
+          setCloud((c) => ({ ...c, ok: true, backend: c.backend === 'offline' ? 'memory' : c.backend }))
+        }
+      })
+    }, 900)
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    }
+  }, [rooms, playerCode, displayName, hydrated])
+
+  // Invite hash → async resolve (cloud short code or embedded payload)
+  useEffect(() => {
+    let cancelled = false
+
+    async function handlePayload(raw: string | null) {
+      if (!raw) return
+      const resolved = await resolveInvite(raw)
+      if (cancelled || !resolved) return
+      setPendingInvite(resolved)
       clearInviteHash()
     }
 
+    void handlePayload(parseInviteFromLocation())
+
     const onHash = () => {
-      const room = parseInviteFromLocation()
-      if (room) {
-        setPendingInvite(room)
-        clearInviteHash()
-      }
+      void handlePayload(parseInviteFromLocation())
     }
     window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    return () => {
+      cancelled = true
+      window.removeEventListener('hashchange', onHash)
+    }
   }, [])
 
   useEffect(() => {
@@ -65,6 +145,12 @@ export default function App() {
     return rooms.find((r) => r.id === view.roomId) ?? null
   }, [rooms, view])
 
+  const cloudLabel = !cloud.ok
+    ? 'local save'
+    : cloud.durable
+      ? 'cloud sync on'
+      : 'dev memory store'
+
   function upsert(room: Room) {
     setRooms((prev) => {
       const i = prev.findIndex((r) => r.id === room.id)
@@ -77,16 +163,17 @@ export default function App() {
 
   function startFromTemplate(templateId: string) {
     const template = templateById(templateId) ?? TEMPLATES[0]!
-    const room = roomFromTemplate(template)
-    upsert(room)
+    const room = roomFromTemplate(template, displayName === 'You' ? 'You' : displayName)
+    // Soft nudge: preselect weekly challenge ribbon as optional
+    upsert({ ...room, challengeId: weekly.id, ribbon: weekly.ribbon })
     setView({ name: 'editor', roomId: room.id })
-    setToast('Template loaded — remix away!')
+    setToast(`Template loaded · week’s ${weekly.ribbon} ready`)
   }
 
   function remixRoom(id: string) {
     const source = rooms.find((r) => r.id === id)
     if (!source) return
-    const room = remixOf(source)
+    const room = remixOf(source, displayName === 'You' ? 'You' : displayName)
     upsert(room)
     setView({ name: 'editor', roomId: room.id })
     setToast(`Remixing ${source.name}`)
@@ -95,7 +182,7 @@ export default function App() {
   function duplicate(id: string) {
     const source = rooms.find((r) => r.id === id)
     if (!source) return
-    const room = duplicateRoom(source)
+    const room = duplicateRoom(source, displayName === 'You' ? 'You' : displayName)
     upsert(room)
     setView({ name: 'editor', roomId: room.id })
     setToast('Room duplicated')
@@ -105,7 +192,7 @@ export default function App() {
     if (!activeRoom) return
     upsert({ ...activeRoom, shared: true })
     setView({ name: 'gallery' })
-    setToast('Invite ready · marked shared in your gallery')
+    setToast('Invite ready · saved to your gallery & friend code')
   }
 
   function acceptInvite(as: 'friend' | 'family') {
@@ -125,6 +212,30 @@ export default function App() {
   function previewJoin(room: Room) {
     setPendingInvite(room)
     setView({ name: 'home' })
+  }
+
+  async function switchPlayerCode(code: string) {
+    const ok = savePlayerCode(code)
+    if (!ok) return false
+    setPlayerCode(code)
+    const remote = await fetchPlayerRooms(code)
+    if (remote) {
+      if (remote.rooms.length) {
+        setRooms(mergeRoomLists(loadRooms() ?? [], remote.rooms))
+      }
+      if (remote.displayName) {
+        setDisplayName(remote.displayName)
+        saveDisplayName(remote.displayName)
+      }
+    }
+    setHydrated(true)
+    return true
+  }
+
+  function updateDisplayName(name: string) {
+    const next = name.slice(0, 32) || 'You'
+    setDisplayName(next)
+    saveDisplayName(next)
   }
 
   const yourSharedCount = rooms.filter((r) => r.authorKind === 'you' || r.shared).length
@@ -163,7 +274,11 @@ export default function App() {
                 onStart={() => setView({ name: 'templates' })}
                 onGallery={() => setView({ name: 'gallery' })}
                 onJoin={() => setView({ name: 'join' })}
+                onSync={() => setShowSync(true)}
                 roomCount={yourSharedCount}
+                playerCode={playerCode}
+                weekly={weekly}
+                cloudLabel={cloudLabel}
               />
             )}
 
@@ -178,6 +293,7 @@ export default function App() {
               <Editor
                 room={activeRoom}
                 challenges={CHALLENGES}
+                weeklyId={weekly.id}
                 onChange={upsert}
                 onShare={() => setView({ name: 'share', roomId: activeRoom.id })}
                 onLineage={() => setView({ name: 'lineage', roomId: activeRoom.id })}
@@ -189,12 +305,14 @@ export default function App() {
             {view.name === 'gallery' && (
               <Gallery
                 rooms={rooms}
+                playerCode={playerCode}
                 onOpen={(id) => setView({ name: 'editor', roomId: id })}
                 onRemix={remixRoom}
                 onDuplicate={duplicate}
                 onLineage={(id) => setView({ name: 'lineage', roomId: id })}
                 onNew={() => setView({ name: 'templates' })}
                 onJoin={() => setView({ name: 'join' })}
+                onSync={() => setShowSync(true)}
                 onBack={() => setView({ name: 'home' })}
               />
             )}
@@ -219,6 +337,7 @@ export default function App() {
       {view.name === 'share' && activeRoom && (
         <ShareSheet
           room={activeRoom}
+          playerCode={playerCode}
           onConfirm={confirmShare}
           onCancel={() => setView({ name: 'editor', roomId: activeRoom.id })}
         />
@@ -229,6 +348,17 @@ export default function App() {
           room={pendingInvite}
           onAccept={acceptInvite}
           onDecline={() => setPendingInvite(null)}
+        />
+      )}
+
+      {showSync && (
+        <PlayerSync
+          playerCode={playerCode}
+          displayName={displayName}
+          cloudLabel={cloudLabel}
+          onSaveCode={switchPlayerCode}
+          onDisplayName={updateDisplayName}
+          onClose={() => setShowSync(false)}
         />
       )}
 
