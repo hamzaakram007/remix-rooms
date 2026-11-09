@@ -11,6 +11,10 @@ export type PropKind =
   | 'shelf'
   | 'beanbag'
   | 'poster'
+  | 'cushion'
+  | 'star'
+  | 'mirror'
+  | 'toy'
 
 export type RoomProp = {
   id: string
@@ -32,11 +36,15 @@ export type Room = {
   accentColor: string
   props: RoomProp[]
   parentId?: string
+  parentName?: string
+  parentAuthor?: string
   lineage: string[]
   challengeId?: string
   ribbon?: string
   shared: boolean
   createdAt: number
+  /** Marked when imported via invite link/code */
+  inviteImported?: boolean
 }
 
 export type Template = {
@@ -64,4 +72,5 @@ export type View =
   | { name: 'gallery' }
   | { name: 'share'; roomId: string }
   | { name: 'lineage'; roomId: string }
-  | { name: 'challenges' }
+  | { name: 'invite'; room: Room }
+  | { name: 'join' }

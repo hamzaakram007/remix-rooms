@@ -1,11 +1,12 @@
 import type { Room } from './types'
 import { uid } from '../lib/id'
 
-/** Simulated friends & family gallery for the MVP (no live social backend). */
+/** Simulated friends & family gallery seeds (no open stranger feed). */
 export function buildSampleGallery(): Room[] {
+  const julesId = uid('gal')
   return [
     {
-      id: uid('gal'),
+      id: julesId,
       name: 'Jules’ Snack Corner',
       author: 'Jules',
       authorKind: 'friend',
@@ -19,6 +20,7 @@ export function buildSampleGallery(): Room[] {
         { id: uid('p'), kind: 'rug', x: 50, y: 82, scale: 1.2, color: '#ffd24a' },
         { id: uid('p'), kind: 'poster', x: 20, y: 24, scale: 0.95, color: '#0b2438' },
         { id: uid('p'), kind: 'lamp', x: 78, y: 52, scale: 0.9, color: '#fff1c2' },
+        { id: uid('p'), kind: 'toy', x: 46, y: 58, scale: 0.7, color: '#ff7a1a' },
       ],
       lineage: ['Snack Den'],
       shared: true,
@@ -41,6 +43,7 @@ export function buildSampleGallery(): Room[] {
         { id: uid('p'), kind: 'window', x: 55, y: 16, scale: 1, color: '#243a5c' },
         { id: uid('p'), kind: 'lamp', x: 78, y: 46, scale: 0.85, color: '#ffd24a' },
         { id: uid('p'), kind: 'plant', x: 14, y: 58, scale: 1, color: '#3cb371' },
+        { id: uid('p'), kind: 'star', x: 28, y: 22, scale: 0.45, color: '#fff1c2' },
       ],
       lineage: ['Moonlight Loft'],
       shared: true,
@@ -61,9 +64,12 @@ export function buildSampleGallery(): Room[] {
         { id: uid('p'), kind: 'plant', x: 74, y: 62, scale: 1.15, color: '#2d6b4f' },
         { id: uid('p'), kind: 'rug', x: 48, y: 82, scale: 1, color: '#552870' },
         { id: uid('p'), kind: 'window', x: 18, y: 18, scale: 0.9, color: '#3d2a5c' },
+        { id: uid('p'), kind: 'mirror', x: 70, y: 28, scale: 0.7, color: '#7dffc3' },
       ],
       lineage: ['Spooky Hallway', 'Jules’ Snack Corner'],
-      parentId: undefined,
+      parentId: julesId,
+      parentName: 'Jules’ Snack Corner',
+      parentAuthor: 'Jules',
       shared: true,
       createdAt: Date.now() - 86400000,
       ribbon: 'Spook Ribbon',
@@ -84,12 +90,36 @@ export function buildSampleGallery(): Room[] {
         { id: uid('p'), kind: 'plant', x: 20, y: 56, scale: 1.2, color: '#228b22' },
         { id: uid('p'), kind: 'plant', x: 78, y: 58, scale: 1.05, color: '#2e8b57' },
         { id: uid('p'), kind: 'lamp', x: 62, y: 48, scale: 0.8, color: '#ffd24a' },
+        { id: uid('p'), kind: 'cushion', x: 58, y: 72, scale: 0.65, color: '#7dffc3' },
       ],
       lineage: ['Garden Glow'],
       shared: true,
       createdAt: Date.now() - 86400000 * 3,
       ribbon: 'Sunshine Ribbon',
       challengeId: 'sunniest-desk',
+    },
+    {
+      id: uid('gal'),
+      name: 'Kai’s Cloud Fort',
+      author: 'Kai',
+      authorKind: 'friend',
+      templateId: 'cloud-fort',
+      wallColor: '#3d6e8c',
+      floorColor: '#d9c3a5',
+      accentColor: '#fff1c2',
+      props: [
+        { id: uid('p'), kind: 'window', x: 50, y: 16, scale: 1.15, color: '#b8e0ff' },
+        { id: uid('p'), kind: 'cushion', x: 28, y: 68, scale: 1, color: '#fff1c2' },
+        { id: uid('p'), kind: 'cushion', x: 52, y: 72, scale: 0.95, color: '#7dffc3' },
+        { id: uid('p'), kind: 'star', x: 22, y: 26, scale: 0.55, color: '#ffd24a' },
+        { id: uid('p'), kind: 'rug', x: 50, y: 84, scale: 1.15, color: '#87ceeb' },
+        { id: uid('p'), kind: 'mirror', x: 78, y: 30, scale: 0.7, color: '#b8e0ff' },
+      ],
+      lineage: ['Cloud Fort'],
+      shared: true,
+      createdAt: Date.now() - 86400000 * 1.5,
+      ribbon: 'Fort Ribbon',
+      challengeId: 'wildest-fort',
     },
   ]
 }

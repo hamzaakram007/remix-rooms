@@ -7,10 +7,20 @@ import type { Room, View } from './data/types'
 import { Editor } from './components/Editor'
 import { Gallery } from './components/Gallery'
 import { Home } from './components/Home'
+import { InviteAccept } from './components/InviteAccept'
+import { JoinCode } from './components/JoinCode'
 import { Lineage } from './components/Lineage'
 import { ShareSheet } from './components/ShareSheet'
 import { TemplatePicker } from './components/TemplatePicker'
-import { loadRooms, persistRooms, remixOf, roomFromTemplate, templateById } from './lib/rooms'
+import { clearInviteHash, parseInviteFromLocation } from './lib/share'
+import {
+  duplicateRoom,
+  loadRooms,
+  persistRooms,
+  remixOf,
+  roomFromTemplate,
+  templateById,
+} from './lib/rooms'
 
 export default function App() {
   const [rooms, setRooms] = useState<Room[]>(() => {
@@ -20,10 +30,29 @@ export default function App() {
   })
   const [view, setView] = useState<View>({ name: 'home' })
   const [toast, setToast] = useState<string | null>(null)
+  const [pendingInvite, setPendingInvite] = useState<Room | null>(null)
 
   useEffect(() => {
     persistRooms(rooms)
   }, [rooms])
+
+  useEffect(() => {
+    const incoming = parseInviteFromLocation()
+    if (incoming) {
+      setPendingInvite(incoming)
+      clearInviteHash()
+    }
+
+    const onHash = () => {
+      const room = parseInviteFromLocation()
+      if (room) {
+        setPendingInvite(room)
+        clearInviteHash()
+      }
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -47,7 +76,7 @@ export default function App() {
   }
 
   function startFromTemplate(templateId: string) {
-    const template = templateById(templateId) ?? TEMPLATES[0]
+    const template = templateById(templateId) ?? TEMPLATES[0]!
     const room = roomFromTemplate(template)
     upsert(room)
     setView({ name: 'editor', roomId: room.id })
@@ -63,11 +92,39 @@ export default function App() {
     setToast(`Remixing ${source.name}`)
   }
 
+  function duplicate(id: string) {
+    const source = rooms.find((r) => r.id === id)
+    if (!source) return
+    const room = duplicateRoom(source)
+    upsert(room)
+    setView({ name: 'editor', roomId: room.id })
+    setToast('Room duplicated')
+  }
+
   function confirmShare() {
     if (!activeRoom) return
     upsert({ ...activeRoom, shared: true })
     setView({ name: 'gallery' })
-    setToast('Shared to your friends & family gallery')
+    setToast('Invite ready · marked shared in your gallery')
+  }
+
+  function acceptInvite(as: 'friend' | 'family') {
+    if (!pendingInvite) return
+    const room: Room = {
+      ...pendingInvite,
+      authorKind: as,
+      shared: true,
+      inviteImported: true,
+    }
+    upsert(room)
+    setPendingInvite(null)
+    setView({ name: 'gallery' })
+    setToast(`Added ${room.name} to your circle`)
+  }
+
+  function previewJoin(room: Room) {
+    setPendingInvite(room)
+    setView({ name: 'home' })
   }
 
   const yourSharedCount = rooms.filter((r) => r.authorKind === 'you' || r.shared).length
@@ -86,6 +143,9 @@ export default function App() {
           <button type="button" onClick={() => setView({ name: 'gallery' })}>
             Gallery
           </button>
+          <button type="button" onClick={() => setView({ name: 'join' })}>
+            Invite
+          </button>
         </div>
       </nav>
 
@@ -93,15 +153,16 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div
             key={viewKey(view)}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.28 }}
           >
             {view.name === 'home' && (
               <Home
                 onStart={() => setView({ name: 'templates' })}
                 onGallery={() => setView({ name: 'gallery' })}
+                onJoin={() => setView({ name: 'join' })}
                 roomCount={yourSharedCount}
               />
             )}
@@ -120,6 +181,7 @@ export default function App() {
                 onChange={upsert}
                 onShare={() => setView({ name: 'share', roomId: activeRoom.id })}
                 onLineage={() => setView({ name: 'lineage', roomId: activeRoom.id })}
+                onDuplicate={() => duplicate(activeRoom.id)}
                 onBack={() => setView({ name: 'gallery' })}
               />
             )}
@@ -129,7 +191,10 @@ export default function App() {
                 rooms={rooms}
                 onOpen={(id) => setView({ name: 'editor', roomId: id })}
                 onRemix={remixRoom}
+                onDuplicate={duplicate}
+                onLineage={(id) => setView({ name: 'lineage', roomId: id })}
                 onNew={() => setView({ name: 'templates' })}
+                onJoin={() => setView({ name: 'join' })}
                 onBack={() => setView({ name: 'home' })}
               />
             )}
@@ -137,8 +202,15 @@ export default function App() {
             {view.name === 'lineage' && activeRoom && (
               <Lineage
                 room={activeRoom}
+                rooms={rooms}
+                onOpenParent={(id) => setView({ name: 'editor', roomId: id })}
+                onRemix={() => remixRoom(activeRoom.id)}
                 onBack={() => setView({ name: 'editor', roomId: activeRoom.id })}
               />
+            )}
+
+            {view.name === 'join' && (
+              <JoinCode onJoin={previewJoin} onBack={() => setView({ name: 'home' })} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -152,14 +224,22 @@ export default function App() {
         />
       )}
 
+      {pendingInvite && (
+        <InviteAccept
+          room={pendingInvite}
+          onAccept={acceptInvite}
+          onDecline={() => setPendingInvite(null)}
+        />
+      )}
+
       <AnimatePresence>
         {toast && (
           <motion.div
             className="toast"
             role="status"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
           >
             {toast}
           </motion.div>
@@ -170,5 +250,6 @@ export default function App() {
 }
 
 function viewKey(view: View) {
+  if (view.name === 'invite') return `invite:${view.room.id}`
   return 'roomId' in view ? `${view.name}:${view.roomId}` : view.name
 }

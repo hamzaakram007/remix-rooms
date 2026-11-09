@@ -13,6 +13,8 @@ const PROP_PALETTE = [
   '#0b2438',
   '#fff1c2',
   '#87ceeb',
+  '#ff5e3a',
+  '#9ad7ff',
 ]
 
 export const WALL_SWATCHES = [
@@ -20,10 +22,12 @@ export const WALL_SWATCHES = [
   '#f26b3a',
   '#14233a',
   '#0f6b5c',
-  '#2a1840',
+  '#0d3b4c',
+  '#3d6e8c',
+  '#c45c26',
+  '#245b6b',
   '#f4a261',
   '#0b2438',
-  '#3d5a80',
 ]
 
 export const FLOOR_SWATCHES = [
@@ -32,9 +36,11 @@ export const FLOOR_SWATCHES = [
   '#4a3728',
   '#d4a574',
   '#1a1220',
-  '#6b4f3a',
-  '#8b6914',
+  '#1f1a18',
+  '#d9c3a5',
   '#5c4033',
+  '#6b5344',
+  '#6b4f3a',
 ]
 
 export const STAMPABLE: PropKind[] = [
@@ -44,6 +50,10 @@ export const STAMPABLE: PropKind[] = [
   'art',
   'beanbag',
   'rug',
+  'cushion',
+  'star',
+  'mirror',
+  'toy',
 ]
 
 export function templateById(id: string): Template | undefined {
@@ -75,16 +85,33 @@ export function remixOf(source: Room, author = 'You'): Room {
     author,
     authorKind: 'you',
     parentId: source.id,
+    parentName: source.name,
+    parentAuthor: source.author,
     lineage: [...source.lineage, source.name],
     shared: false,
     createdAt: Date.now(),
     ribbon: undefined,
+    challengeId: undefined,
+    inviteImported: false,
+  }
+}
+
+export function duplicateRoom(source: Room, author = 'You'): Room {
+  return {
+    ...structuredClone(source),
+    id: uid('room'),
+    name: `${source.name} (copy)`,
+    author,
+    authorKind: 'you',
+    shared: false,
+    createdAt: Date.now(),
+    inviteImported: false,
   }
 }
 
 export function nextColor(current: string): string {
   const i = PROP_PALETTE.indexOf(current)
-  return PROP_PALETTE[(i + 1) % PROP_PALETTE.length]
+  return PROP_PALETTE[(i + 1) % PROP_PALETTE.length]!
 }
 
 export function stampProp(kind: PropKind, x = 50, y = 55): RoomProp {
@@ -94,13 +121,25 @@ export function stampProp(kind: PropKind, x = 50, y = 55): RoomProp {
     x,
     y,
     scale: 0.9 + Math.random() * 0.25,
-    color: PROP_PALETTE[Math.floor(Math.random() * PROP_PALETTE.length)],
+    color: PROP_PALETTE[Math.floor(Math.random() * PROP_PALETTE.length)]!,
   }
 }
 
+export function cloneProp(prop: RoomProp): RoomProp {
+  return {
+    ...prop,
+    id: uid('p'),
+    x: Math.min(94, prop.x + 4),
+    y: Math.min(90, prop.y + 3),
+  }
+}
+
+const STORAGE_KEY = 'remix-rooms:v2'
+const LEGACY_KEY = 'remix-rooms:v1'
+
 export function persistRooms(rooms: Room[]) {
   try {
-    localStorage.setItem('remix-rooms:v1', JSON.stringify(rooms))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms))
   } catch {
     /* ignore quota */
   }
@@ -108,10 +147,14 @@ export function persistRooms(rooms: Room[]) {
 
 export function loadRooms(): Room[] | null {
   try {
-    const raw = localStorage.getItem('remix-rooms:v1')
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
     if (!raw) return null
     return JSON.parse(raw) as Room[]
   } catch {
     return null
   }
+}
+
+export function snapshotRoom(room: Room): Room {
+  return structuredClone(room)
 }
