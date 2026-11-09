@@ -1,16 +1,31 @@
 import { motion } from 'framer-motion'
+import type { Challenge } from '../data/types'
 import { TEMPLATES } from '../data/templates'
-import { RoomStage } from './RoomStage'
 import { roomFromTemplate } from '../lib/rooms'
+import { RoomStage } from './RoomStage'
+import { WeeklyRibbon } from './WeeklyRibbon'
 
 type Props = {
   onStart: () => void
   onGallery: () => void
   onJoin: () => void
+  onSync: () => void
   roomCount: number
+  playerCode: string
+  weekly: Challenge
+  cloudLabel: string
 }
 
-export function Home({ onStart, onGallery, onJoin, roomCount }: Props) {
+export function Home({
+  onStart,
+  onGallery,
+  onJoin,
+  onSync,
+  roomCount,
+  playerCode,
+  weekly,
+  cloudLabel,
+}: Props) {
   const preview = roomFromTemplate(TEMPLATES[0]!)
 
   return (
@@ -22,14 +37,14 @@ export function Home({ onStart, onGallery, onJoin, roomCount }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <p className="eyebrow">Friends & family · invite links · no open chat</p>
+        <p className="eyebrow">Friends & family · cloud invites · no open chat</p>
         <h1 className="brand-title">
           Remix
           <span> Rooms</span>
         </h1>
         <p className="lede">
           Start from a stylish template, smash it into your own vibe, then share a parent-clear
-          invite with people you actually know.
+          invite that works on another device — not the open internet.
         </p>
         <div className="cta-row">
           <motion.button
@@ -48,6 +63,11 @@ export function Home({ onStart, onGallery, onJoin, roomCount }: Props) {
             Open invite
           </button>
         </div>
+        <WeeklyRibbon challenge={weekly} onRemix={onStart} compact />
+        <button type="button" className="player-chip" onClick={onSync}>
+          Friend code <strong>{playerCode}</strong>
+          <span>· {cloudLabel}</span>
+        </button>
       </motion.div>
 
       <motion.div

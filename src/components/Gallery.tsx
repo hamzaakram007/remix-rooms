@@ -4,23 +4,27 @@ import { RoomStage } from './RoomStage'
 
 type Props = {
   rooms: Room[]
+  playerCode: string
   onOpen: (id: string) => void
   onRemix: (id: string) => void
   onDuplicate: (id: string) => void
   onLineage: (id: string) => void
   onNew: () => void
   onJoin: () => void
+  onSync: () => void
   onBack: () => void
 }
 
 export function Gallery({
   rooms,
+  playerCode,
   onOpen,
   onRemix,
   onDuplicate,
   onLineage,
   onNew,
   onJoin,
+  onSync,
   onBack,
 }: Props) {
   const yours = rooms.filter((r) => r.authorKind === 'you')
@@ -35,9 +39,12 @@ export function Gallery({
         <div>
           <h2>Friends & family gallery</h2>
           <p>
-            Private circle only — share with invite links/codes, remix with clear lineage. No open
-            chat, no stranger feed.
+            Private circle only — cloud invites show the real remote room with remix lineage. No
+            open chat, no stranger feed.
           </p>
+          <button type="button" className="player-chip player-chip--inline" onClick={onSync}>
+            Your code <strong>{playerCode}</strong>
+          </button>
         </div>
         <div className="cta-row">
           <button type="button" className="btn btn-ghost btn-sm" onClick={onJoin}>

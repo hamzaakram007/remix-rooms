@@ -18,6 +18,7 @@ type Tool = 'select' | 'recolor' | 'stretch' | 'stamp' | 'walls'
 type Props = {
   room: Room
   challenges: Challenge[]
+  weeklyId?: string
   onChange: (room: Room) => void
   onShare: () => void
   onLineage: () => void
@@ -30,6 +31,7 @@ const HISTORY_LIMIT = 40
 export function Editor({
   room,
   challenges,
+  weeklyId,
   onChange,
   onShare,
   onLineage,
@@ -377,17 +379,17 @@ export function Editor({
       </AnimatePresence>
 
       <div className="challenge-strip">
-        <span>Optional challenge ribbons</span>
+        <span>Optional challenge ribbons · this week highlighted · cosmetic only</span>
         <div className="challenge-strip__row">
           {challenges.map((c) => (
             <button
               key={c.id}
               type="button"
-              className={`ribbon-chip ${room.challengeId === c.id ? 'is-on' : ''}`}
+              className={`ribbon-chip ${room.challengeId === c.id ? 'is-on' : ''} ${c.id === weeklyId ? 'is-weekly' : ''}`}
               onClick={() => applyChallenge(c.id)}
-              title={c.prompt}
+              title={c.id === weeklyId ? `This week: ${c.prompt}` : c.prompt}
             >
-              {c.ribbon}
+              {c.id === weeklyId ? `★ ${c.ribbon}` : c.ribbon}
             </button>
           ))}
         </div>

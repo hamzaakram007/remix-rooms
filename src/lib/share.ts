@@ -1,4 +1,5 @@
 import type { PropKind, Room, RoomProp } from '../data/types'
+import { fetchInviteRoom } from './api'
 import { uid } from './id'
 
 /** Compact wire format for shareable room payloads (URL / invite code). */
@@ -12,11 +13,16 @@ type CompactShare = {
   c: string
   p: [PropKind, number, number, number, string][]
   l: string[]
+  pid?: string
+  pn?: string
+  pa?: string
   ch?: string
   rb?: string
+  id?: string
 }
 
-const INVITE_PREFIX = 'RR1.'
+export const EMBEDDED_PREFIX = 'RR1.'
+export const CLOUD_PREFIX = 'RR2.'
 
 export function roomToCompact(room: Room): CompactShare {
   return {
@@ -29,6 +35,10 @@ export function roomToCompact(room: Room): CompactShare {
     c: room.accentColor,
     p: room.props.map((p) => [p.kind, round1(p.x), round1(p.y), round2(p.scale), p.color]),
     l: room.lineage.slice(0, 12),
+    id: room.id,
+    ...(room.parentId ? { pid: room.parentId } : {}),
+    ...(room.parentName ? { pn: room.parentName } : {}),
+    ...(room.parentAuthor ? { pa: room.parentAuthor } : {}),
     ...(room.challengeId ? { ch: room.challengeId } : {}),
     ...(room.ribbon ? { rb: room.ribbon } : {}),
   }
@@ -44,7 +54,7 @@ export function compactToRoom(data: CompactShare, overrides?: Partial<Room>): Ro
     color,
   }))
   return {
-    id: uid('room'),
+    id: data.id || uid('room'),
     name: data.n,
     author: data.a,
     authorKind: 'friend',
@@ -54,6 +64,9 @@ export function compactToRoom(data: CompactShare, overrides?: Partial<Room>): Ro
     accentColor: data.c,
     props,
     lineage: data.l?.length ? data.l : ['Shared room'],
+    parentId: data.pid,
+    parentName: data.pn,
+    parentAuthor: data.pa,
     challengeId: data.ch,
     ribbon: data.rb,
     shared: true,
@@ -65,14 +78,30 @@ export function compactToRoom(data: CompactShare, overrides?: Partial<Room>): Ro
 
 export function encodeInvite(room: Room): string {
   const json = JSON.stringify(roomToCompact(room))
-  return INVITE_PREFIX + toBase64Url(json)
+  return EMBEDDED_PREFIX + toBase64Url(json)
+}
+
+export function encodeCloudInvite(shortCode: string): string {
+  return CLOUD_PREFIX + shortCode.replace(/^RR2\./i, '').toUpperCase()
+}
+
+export function isCloudInviteCode(raw: string): boolean {
+  const trimmed = raw.trim()
+  if (/^RR2\./i.test(trimmed)) return true
+  // Bare short codes (6 alnum) — not embedded base64
+  const bare = trimmed.replace(/^#?invite=/i, '')
+  return /^[A-HJ-NP-Z0-9]{5,8}$/i.test(bare) && !bare.includes('.')
 }
 
 export function decodeInvite(raw: string): Room | null {
   try {
     const trimmed = raw.trim()
-    const body = trimmed.startsWith(INVITE_PREFIX)
-      ? trimmed.slice(INVITE_PREFIX.length)
+    if (/^RR2\./i.test(trimmed) || isCloudInviteCode(trimmed)) {
+      // Sync decode cannot fetch cloud — caller should use resolveInvite
+      return null
+    }
+    const body = trimmed.startsWith(EMBEDDED_PREFIX)
+      ? trimmed.slice(EMBEDDED_PREFIX.length)
       : trimmed.replace(/^#?invite=/i, '')
     if (!body) return null
     const json = fromBase64Url(body)
@@ -84,19 +113,71 @@ export function decodeInvite(raw: string): Room | null {
   }
 }
 
-export function buildInviteUrl(room: Room, origin = typeof window !== 'undefined' ? window.location.origin : ''): string {
-  const code = encodeInvite(room)
-  const base = origin || ''
-  return `${base}${base.endsWith('/') ? '' : '/'}#invite=${code.slice(INVITE_PREFIX.length)}`
+/** Resolve invite from embedded payload or cloud short code. */
+export async function resolveInvite(raw: string): Promise<Room | null> {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // Extract from full URLs
+  let payload = trimmed
+  try {
+    if (trimmed.includes('://') || trimmed.includes('#invite=')) {
+      const hash = trimmed.includes('#') ? trimmed.slice(trimmed.indexOf('#') + 1) : trimmed
+      const params = new URLSearchParams(hash.includes('=') ? hash : `invite=${hash}`)
+      const invite = params.get('invite')
+      if (invite) payload = invite
+    }
+  } catch {
+    /* use raw */
+  }
+
+  if (/^RR2\./i.test(payload) || isCloudInviteCode(payload)) {
+    const code = payload.replace(/^RR2\./i, '').replace(/^#?invite=/i, '')
+    const room = await fetchInviteRoom(code)
+    if (!room) return null
+    return {
+      ...room,
+      authorKind: room.authorKind === 'you' ? 'friend' : room.authorKind || 'friend',
+      shared: true,
+      inviteImported: true,
+    }
+  }
+
+  return decodeInvite(payload.startsWith(EMBEDDED_PREFIX) ? payload : mayAddPrefix(payload))
 }
 
-export function parseInviteFromLocation(hash = typeof window !== 'undefined' ? window.location.hash : ''): Room | null {
+function mayAddPrefix(body: string) {
+  if (body.startsWith(EMBEDDED_PREFIX) || body.startsWith(CLOUD_PREFIX)) return body
+  // Looks like base64url → treat as embedded
+  if (/^[A-Za-z0-9_-]+$/.test(body) && body.length > 20) return EMBEDDED_PREFIX + body
+  return body
+}
+
+export function buildInviteUrl(
+  invitePayload: string,
+  origin = typeof window !== 'undefined' ? window.location.origin : '',
+): string {
+  const bare = invitePayload
+    .replace(new RegExp(`^(${EMBEDDED_PREFIX}|${CLOUD_PREFIX})`, 'i'), '')
+  const base = origin || ''
+  return `${base}${base.endsWith('/') ? '' : '/'}#invite=${bare}`
+}
+
+export function buildInviteUrlFromRoom(
+  room: Room,
+  origin = typeof window !== 'undefined' ? window.location.origin : '',
+): string {
+  const code = encodeInvite(room)
+  return buildInviteUrl(code, origin)
+}
+
+export function parseInviteFromLocation(
+  hash = typeof window !== 'undefined' ? window.location.hash : '',
+): string | null {
   const h = hash.startsWith('#') ? hash.slice(1) : hash
   if (!h) return null
   const params = new URLSearchParams(h.includes('=') ? h : `invite=${h}`)
-  const invite = params.get('invite')
-  if (!invite) return null
-  return decodeInvite(invite.startsWith(INVITE_PREFIX) ? invite : INVITE_PREFIX + invite)
+  return params.get('invite')
 }
 
 export function clearInviteHash() {
@@ -106,7 +187,11 @@ export function clearInviteHash() {
 }
 
 export function shortInviteLabel(code: string): string {
-  const body = code.startsWith(INVITE_PREFIX) ? code.slice(INVITE_PREFIX.length) : code
+  if (code.startsWith(CLOUD_PREFIX) || isCloudInviteCode(code)) {
+    const body = code.replace(/^RR2\./i, '')
+    return `RR2 · ${body}`
+  }
+  const body = code.startsWith(EMBEDDED_PREFIX) ? code.slice(EMBEDDED_PREFIX.length) : code
   if (body.length <= 10) return `RR · ${body}`
   return `RR · ${body.slice(0, 4)}…${body.slice(-4)}`
 }

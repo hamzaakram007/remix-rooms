@@ -914,6 +914,101 @@ button {
   max-width: calc(100% - 2rem);
 }
 
+.weekly-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 0.85rem 0 0.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  background:
+    linear-gradient(120deg, rgba(255, 210, 74, 0.18), rgba(125, 255, 195, 0.1)),
+    rgba(7, 24, 40, 0.55);
+  border: 1px solid rgba(255, 210, 74, 0.35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.weekly-ribbon--compact {
+  margin-top: 1rem;
+  padding: 0.7rem 0.85rem;
+}
+
+.weekly-ribbon__badge {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: linear-gradient(145deg, var(--zest), var(--sunrise));
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+}
+
+.weekly-ribbon__body {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.weekly-ribbon__body strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.weekly-ribbon__body p {
+  margin: 0.2rem 0 0;
+  font-size: 0.86rem;
+  color: rgba(244, 247, 242, 0.82);
+  line-height: 1.35;
+}
+
+.weekly-ribbon__body em {
+  font-style: normal;
+  color: var(--zest);
+  font-weight: 700;
+}
+
+.player-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  margin-top: 0.85rem;
+  border: 1px solid rgba(125, 255, 195, 0.28);
+  background: rgba(30, 77, 92, 0.45);
+  color: var(--chalk);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.player-chip strong {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--foam);
+}
+
+.player-chip span {
+  opacity: 0.75;
+}
+
+.player-chip--inline {
+  margin-top: 0.55rem;
+}
+
+.share-mode {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--foam);
+}
+
+.ribbon-chip.is-weekly {
+  box-shadow: 0 0 0 2px rgba(255, 210, 74, 0.55);
+}
+
 @media (min-width: 860px) {
   .home {
     grid-template-columns: 1.05fr 1fr;
@@ -972,5 +1067,27 @@ button {
 
   .brand-title {
     font-size: clamp(2.8rem, 14vw, 3.8rem);
+  }
+
+  .weekly-ribbon {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .brand-mark__icon,
+  .home__hero-stage,
+  .home__bg {
+    animation: none !important;
   }
 }
